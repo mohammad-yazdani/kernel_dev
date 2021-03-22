@@ -67,6 +67,15 @@ if [[ ! -f buildroot/overlay/etc/init.d/Stest_init ]]; then
 	cd ..
 fi
 
-tmux \
-    new-session  "qemu-system-x86_64 -s -S -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4 -append \"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\" -serial stdio -display none" \; \
-    split-window "gdb -q linux/vmlinux -ex 'target remote :1234'" \;
+if [[ $1 == "--no-tmux" ]]; then
+	echo "Running QEMU..."
+	if [[ $2 == "--no-debug" ]]; then
+		qemu-system-x86_64 -s -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
+	else
+		qemu-system-x86_64 -s -S -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
+	fi
+else
+	tmux \
+    	new-session  "qemu-system-x86_64 -s -S -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append \"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\" -serial stdio -display none" \; \
+    	split-window "gdb -q linux/vmlinux -ex 'target remote :1234'" \;
+fi
