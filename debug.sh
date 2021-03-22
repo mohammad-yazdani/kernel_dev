@@ -2,6 +2,10 @@ KERNEL_VER="v5.4"
 CPU_CORES="16"
 MEMORY="16000M"
 app_cc="cc"
+DEVROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+
+# Go to kernel_dev project root
+cd $DEVROOT
 
 # Get sources
 echo -n -e "Fetching buildroot source... \t\t\t"
