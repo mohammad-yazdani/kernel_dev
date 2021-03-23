@@ -1,0 +1,68 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run QEMU",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "/usr/bin/qemu-system-x86_64",
+            "args": [
+                "-s",
+                "-S",
+                "-kernel",
+                "arch/x86/boot/bzImage",
+                "-boot",
+                "c",
+                "-smp",
+                "16",
+                "-m",
+                "16000M",
+                "-drive",
+                "file=../buildroot/output/images/rootfs.ext4,format=raw",
+                "-append",
+                "\"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\"",
+                "-serial",
+                "stdio",
+                "-display",
+                "none"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+        },
+        {
+            "name": "(gdb) Remote Attach",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "vmlinux",
+            // "additionalSOLibSearchPath": "arm-none-linux-gnueabi/libc/lib;./lib;C:\\DeviceSDK\\win-2.8.15\\sdk\\toolchains\\arm-4.4.1\\arm-none-linux-gnueabi\\libc\\lib;C:\\DeviceSDK\\win-2.8.15\\sdk\\platforms\\201205\\lib",
+            // "processId": "${command:pickProcess}",
+            "MIMode": "gdb",
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "miDebuggerServerAddress": "localhost:1234",
+            "miDebuggerArgs": " -ex 'handle all print nostop noignore'",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true,
+                }
+            ]
+        },
+    ],
+    "compounds": [
+        {
+            "name": "Debug kernel",
+            "preLaunchTask": "build_kernel",
+            "configurations": [
+                "Run QEMU",
+                "(gdb) Remote Attach"
+            ]
+        }
+    ]
+}
