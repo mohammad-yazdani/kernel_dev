@@ -20,6 +20,9 @@
 #define SET_NB 1
 #define DUP_FD 0
 
+#define EPOLL_MAXEVENTS 50 	// Default is 1
+#define EPOLL_TIMEOUT 0 	// Default is 0
+
 int main() {
 
 #if USE_TCP
@@ -72,7 +75,11 @@ int main() {
 	kevent(epfd, ev, 2, 0, 0, 0);
 #else
 	int epfd = epoll_create(1);
+
+	// This struct may not be directly reusable for polling later with `epoll_wait`
 	struct epoll_event ev = {.events = EPOLLIN | EPOLLET, .data.fd = rfd};
+	struct epoll_event *events; // This will be used for polling
+
 	epoll_ctl(epfd, EPOLL_CTL_ADD, rfd, &ev);
 #endif
 
@@ -99,7 +106,9 @@ int main() {
 		static const struct timespec ts = { 0, 1000 };
 		int r = kevent(epfd, 0, 0, ev, 1, &ts);
 #else
-		int r = epoll_wait(epfd, &ev, 1, 0);
+		events = calloc(EPOLL_MAXEVENTS, sizeof(struct epoll_event));
+		// struct epoll_event ev_p = {.events = 0, .data.fd = rfd}; // TODO : Rewrite based on https://gist.github.com/reterVision/8300781
+		int num_events = epoll_wait(epfd, events, EPOLL_MAXEVENTS, EPOLL_TIMEOUT);
 #endif
 #else
 #if __FreeBSD__
@@ -115,10 +124,16 @@ int main() {
 		printf("%d - kevent() got event %hd on fd %lu - ", x, ev[0].filter, ev[0].ident);
 		r = read(ev[0].ident, buf, 1);
 #else
-		printf("%d - epoll_wait() got event %hd on fd %d - ",x, ev.events, ev.data.fd);
-		r = read(ev.data.fd, buf, 1);
-#endif
+		// This is a more correct way of using the `epoll_wait` SYSCALL
+		int i = 0;
+		printf("%d - epoll_wait() got %d events ",x, num_events);
+		for (; i < num_events; i++) {
+			printf("%d - epoll_wait() got event %hd on fd %d - ",x, events[i].events, events[i].data.fd);
+		}
+		int r = read(ev.data.fd, buf, 1);  // TODO : Sock is 1 as last arg / could also use events[i].data.fd
 		printf("read %i bytes\n", r);
+		free(events); // performance degradation?
+#endif
 	}
 
 	for (;;) {
