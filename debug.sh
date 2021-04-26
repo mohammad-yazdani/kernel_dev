@@ -1,6 +1,6 @@
 KERNEL_VER="v5.4"
-CPU_CORES="16"
-MEMORY="16000M"
+CPU_CORES="4"
+MEMORY="4000M"
 app_cc="cc"
 DEVROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 
@@ -43,14 +43,14 @@ echo "done!"
 # Compile linux
 echo -n -e "Compiling kernel... \t\t\t\t"
 cd linux
-CC="ccache gcc" make -j 32 &> /tmp/linux_compile.log
+CC="ccache gcc" make -j$(nproc) &> /tmp/linux_compile.log
 echo "done! (log at /tmp/linux_compile.log)"
 cd ..
 
 # Compile buildroot (build rootfs image)
 echo -n -e "Building rootfs image... \t\t\t"
 cd buildroot
-yes N | CC="ccache gcc" make -j 32 &> /tmp/br_compile.log
+yes N | CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
 echo "done! (log at /tmp/br_compile.log)"
 cd ..
 
@@ -66,7 +66,7 @@ if [[ ! -f buildroot/overlay/etc/init.d/Stest_init ]]; then
 	# Recompile buildroot (build rootfs image)
 	echo -n -e "Re-building rootfs image... \t\t\t"
 	cd buildroot
-	CC="ccache gcc" make -j 32 &> /tmp/br_compile.log
+	CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
 	echo "done! (log at /tmp/br_recompile.log)"
 	cd ..
 fi
