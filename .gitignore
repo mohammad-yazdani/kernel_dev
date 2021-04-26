@@ -1,3 +1,5 @@
 linux
 buildroot
+ubuntu*
+*.deb
 
