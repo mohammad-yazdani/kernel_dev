@@ -1,4 +1,7 @@
-## Kernel dev
+# The Hitchhiker's Guide to messing around with kernel-space
+This repository is has some usefull scripts and info on people who want to make changes to existing kernel and NOT if you want to make your own kernel.
+The patches are related to my research on epoll/kevent.
+## Development setup
 ### Linux (tiny kenel)
 #### With tmux
 - Simply run `debug.sh` :)
