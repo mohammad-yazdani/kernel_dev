@@ -1,5 +1,5 @@
 diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
-index c0c0791b1912..b50d9f96a752 100644
+index c0c0791b1..b50d9f96a 100644
 --- a/include/net/netns/ipv4.h
 +++ b/include/net/netns/ipv4.h
 @@ -213,6 +213,8 @@ struct netns_ipv4 {
@@ -12,7 +12,7 @@ index c0c0791b1912..b50d9f96a752 100644
  	unsigned int	fib_seq;	/* protected by rtnl_mutex */
  
 diff --git a/include/net/sock.h b/include/net/sock.h
-index e6a48ebb22aa..6849dcffd726 100644
+index e6a48ebb2..6849dcffd 100644
 --- a/include/net/sock.h
 +++ b/include/net/sock.h
 @@ -496,6 +496,7 @@ struct sock {
@@ -24,7 +24,7 @@ index e6a48ebb22aa..6849dcffd726 100644
  	void			(*sk_error_report)(struct sock *sk);
  	int			(*sk_backlog_rcv)(struct sock *sk,
 diff --git a/include/net/tcp.h b/include/net/tcp.h
-index 377179283c46..52bd6682636a 100644
+index 37b514567..78d79628e 100644
 --- a/include/net/tcp.h
 +++ b/include/net/tcp.h
 @@ -404,7 +404,7 @@ void tcp_syn_ack_timeout(const struct request_sock *req);
@@ -37,7 +37,7 @@ index 377179283c46..52bd6682636a 100644
  int tcp_mmap(struct file *file, struct socket *sock,
  	     struct vm_area_struct *vma);
 diff --git a/include/uapi/linux/sysctl.h b/include/uapi/linux/sysctl.h
-index ac7fc2bbd169..541740866db7 100644
+index ac7fc2bbd..541740866 100644
 --- a/include/uapi/linux/sysctl.h
 +++ b/include/uapi/linux/sysctl.h
 @@ -426,6 +426,7 @@ enum
@@ -49,7 +49,7 @@ index ac7fc2bbd169..541740866db7 100644
  
  enum {
 diff --git a/kernel/sysctl_binary.c b/kernel/sysctl_binary.c
-index 73c132095a7b..4e371ca83d35 100644
+index 73c132095..4e371ca83 100644
 --- a/kernel/sysctl_binary.c
 +++ b/kernel/sysctl_binary.c
 @@ -418,6 +418,7 @@ static const struct bin_table bin_net_ipv4_table[] = {
@@ -61,13 +61,16 @@ index 73c132095a7b..4e371ca83d35 100644
  	/* NET_TCP_DEFAULT_WIN_SCALE unused */
  	/* NET_TCP_BIC_BETA unused */
 diff --git a/net/core/sock.c b/net/core/sock.c
-index 33543d59a10d..873601f3cdea 100644
+index 33543d59a..f00660d1d 100644
 --- a/net/core/sock.c
 +++ b/net/core/sock.c
-@@ -2822,6 +2822,22 @@ static void sock_def_readable(struct sock *sk)
+@@ -2822,6 +2822,30 @@ static void sock_def_readable(struct sock *sk)
  	rcu_read_unlock();
  }
  
++// A modified version of @sock_def_readable which emits spurious events
++// to epoll. In this context spurious events are when a write to a non-empty buffer
++// wakes a waiter. (concerns user-level threading).
 +static void sock_def_readable_no_spur(struct sock *sk, unsigned int prev_buff_sz)
 +{
 +	struct socket_wq *wq;
@@ -75,10 +78,15 @@ index 33543d59a10d..873601f3cdea 100644
 +
 +	rcu_read_lock();
 +	wq = rcu_dereference(sk->sk_wq);
-+	if (skwq_has_sleeper(wq) && !(sk->sk_type == SOCK_STREAM && prev_buff_sz > 0 && net->ipv4.sysctl_tcp_spurious_wake == 1)) {
-+		printk("SPUR WAKE: %d\n", net->ipv4.sysctl_tcp_spurious_wake);
-+		wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN | EPOLLPRI |	EPOLLRDNORM | EPOLLRDBAND);
-+	}
++	if (skwq_has_sleeper(wq) ) {
++		if (sk->sk_type == SOCK_STREAM && prev_buff_sz > 0 && net->ipv4.sysctl_tcp_spurious_wake == 0) {
++			// Spurious wake
++			rcu_read_unlock();
++			return;
++		} else {
++			wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN | EPOLLPRI |	EPOLLRDNORM | EPOLLRDBAND);
++		}
++ 	}
 +
 +	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
 +	rcu_read_unlock();
@@ -87,7 +95,7 @@ index 33543d59a10d..873601f3cdea 100644
  static void sock_def_write_space(struct sock *sk)
  {
  	struct socket_wq *wq;
-@@ -2911,6 +2927,7 @@ void sock_init_data(struct socket *sock, struct sock *sk)
+@@ -2911,6 +2935,7 @@ void sock_init_data(struct socket *sock, struct sock *sk)
  
  	sk->sk_state_change	=	sock_def_wakeup;
  	sk->sk_data_ready	=	sock_def_readable;
@@ -96,7 +104,7 @@ index 33543d59a10d..873601f3cdea 100644
  	sk->sk_error_report	=	sock_def_error_report;
  	sk->sk_destruct		=	sock_def_destruct;
 diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
-index c83a5d05aeaa..dea0e8e42daf 100644
+index c83a5d05a..dea0e8e42 100644
 --- a/net/ipv4/sysctl_net_ipv4.c
 +++ b/net/ipv4/sysctl_net_ipv4.c
 @@ -1315,6 +1315,13 @@ static struct ctl_table ipv4_net_table[] = {
@@ -114,7 +122,7 @@ index c83a5d05aeaa..dea0e8e42daf 100644
  };
  
 diff --git a/net/ipv4/tcp.c b/net/ipv4/tcp.c
-index 6ddec8a23942..ec42496f4daa 100644
+index 6ddec8a23..96184b117 100644
 --- a/net/ipv4/tcp.c
 +++ b/net/ipv4/tcp.c
 @@ -1713,7 +1713,7 @@ int tcp_set_rcvlowat(struct sock *sk, int val)
@@ -122,15 +130,15 @@ index 6ddec8a23942..ec42496f4daa 100644
  
  	/* Check if we need to signal EPOLLIN right now */
 -	tcp_data_ready(sk);
-+	tcp_data_ready(sk, 0); // TODO : Revisit
++	tcp_data_ready(sk, 0);
  
  	if (sk->sk_userlocks & SOCK_RCVBUF_LOCK)
  		return 0;
 diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
-index 7411a4313462..b4c358658ebc 100644
+index a1768ded2..8c257cbea 100644
 --- a/net/ipv4/tcp_input.c
 +++ b/net/ipv4/tcp_input.c
-@@ -4770,17 +4770,18 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
+@@ -4773,7 +4773,7 @@ int tcp_send_rcvq(struct sock *sk, struct msghdr *msg, size_t size)
  
  }
  
@@ -139,13 +147,9 @@ index 7411a4313462..b4c358658ebc 100644
  {
  	const struct tcp_sock *tp = tcp_sk(sk);
  	int avail = tp->rcv_nxt - tp->copied_seq;
- 
- 	if (avail < sk->sk_rcvlowat && !tcp_rmem_pressure(sk) &&
--	    !sock_flag(sk, SOCK_DONE) &&
-+		!sock_flag(sk, SOCK_DONE) &&
+@@ -4783,7 +4783,8 @@ void tcp_data_ready(struct sock *sk)
  	    tcp_receive_window(tp) > inet_csk(sk)->icsk_ack.rcv_mss)
--		return;
-+  		return;
+ 		return;
  
 -	sk->sk_data_ready(sk);
 +	int prev_buff_sz = avail - new_data_sz;
@@ -153,7 +157,7 @@ index 7411a4313462..b4c358658ebc 100644
  }
  
  static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
-@@ -4789,7 +4790,8 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
+@@ -4792,7 +4793,8 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
  	bool fragstolen;
  	int eaten;
  
@@ -163,7 +167,7 @@ index 7411a4313462..b4c358658ebc 100644
  		__kfree_skb(skb);
  		return;
  	}
-@@ -4842,7 +4844,7 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
+@@ -4845,7 +4847,7 @@ static void tcp_data_queue(struct sock *sk, struct sk_buff *skb)
  		if (eaten > 0)
  			kfree_skb_partial(skb, fragstolen);
  		if (!sock_flag(sk, SOCK_DEAD))
@@ -172,7 +176,7 @@ index 7411a4313462..b4c358658ebc 100644
  		return;
  	}
  
-@@ -5707,7 +5709,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
+@@ -5710,7 +5712,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
  no_ack:
  			if (eaten)
  				kfree_skb_partial(skb, fragstolen);
@@ -182,7 +186,7 @@ index 7411a4313462..b4c358658ebc 100644
  		}
  	}
 diff --git a/net/ipv4/tcp_ipv4.c b/net/ipv4/tcp_ipv4.c
-index 04acdca4bb0d..31c1b767b611 100644
+index 04acdca4b..31c1b767b 100644
 --- a/net/ipv4/tcp_ipv4.c
 +++ b/net/ipv4/tcp_ipv4.c
 @@ -2735,6 +2735,7 @@ static int __net_init tcp_sk_init(struct net *net)

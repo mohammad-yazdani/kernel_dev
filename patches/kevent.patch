@@ -1,0 +1,136 @@
+diff --git a/sys/netinet/tcp_input.c b/sys/netinet/tcp_input.c
+index 3efc100bf..b7367289b 100755
+--- a/sys/netinet/tcp_input.c
++++ b/sys/netinet/tcp_input.c
+@@ -1473,8 +1473,10 @@ tcp_autorcvbuf(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ }
+ 
+ void
+-tcp_handle_wakeup(struct tcpcb *tp, struct socket *so)
++tcp_handle_wakeup(struct tcpcb *tp, struct socket *so, int acc_pre_seg)
+ {
++	if (acc_pre_seg > 0) return; // Supressing suprious events
++	
+ 	/*
+ 	 * Since tp might be gone if the session entered
+ 	 * the TIME_WAIT state before coming here, we need
+@@ -1508,6 +1510,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ 	struct mbuf *mfree;
+ 	struct tcpopt to;
+ 	int tfo_syn;
++	int acc_pre_seg = so->so_rcv.sb_acc;
+ 
+ #ifdef TCPDEBUG
+ 	/*
+@@ -3277,7 +3280,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ 		tp->t_flags &= ~TF_DELACK;
+ 		tcp_timer_activate(tp, TT_DELACK, tcp_delacktime);
+ 	}
+-	tcp_handle_wakeup(tp, so);
++	tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 	INP_WUNLOCK(tp->t_inpcb);
+ 	return;
+ 
+@@ -3311,7 +3314,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ 	TCP_PROBE3(debug__input, tp, th, m);
+ 	tp->t_flags |= TF_ACKNOW;
+ 	(void) tp->t_fb->tfb_tcp_output(tp);
+-	tcp_handle_wakeup(tp, so);
++	tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 	INP_WUNLOCK(tp->t_inpcb);
+ 	m_freem(m);
+ 	return;
+@@ -3319,7 +3322,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ dropwithreset:
+ 	if (tp != NULL) {
+ 		tcp_dropwithreset(m, th, tp, tlen, rstreason);
+-		tcp_handle_wakeup(tp, so);
++		tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 		INP_WUNLOCK(tp->t_inpcb);
+ 	} else
+ 		tcp_dropwithreset(m, th, NULL, tlen, rstreason);
+@@ -3336,7 +3339,7 @@ tcp_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ #endif
+ 	TCP_PROBE3(debug__input, tp, th, m);
+ 	if (tp != NULL) {
+-		tcp_handle_wakeup(tp, so);
++		tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 		INP_WUNLOCK(tp->t_inpcb);
+ 	}
+ 	m_freem(m);
+diff --git a/sys/netinet/tcp_stacks/bbr.c b/sys/netinet/tcp_stacks/bbr.c
+index 49ed7e992..3d9466832 100755
+--- a/sys/netinet/tcp_stacks/bbr.c
++++ b/sys/netinet/tcp_stacks/bbr.c
+@@ -11738,6 +11738,7 @@ bbr_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ {
+ 	struct timeval tv;
+ 	int retval;
++	int acc_pre_seg = so->so_rcv.sb_acc;
+ 
+ 	/* First lets see if we have old packets */
+ 	if (tp->t_in_pkt) {
+@@ -11756,7 +11757,7 @@ bbr_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ 	retval = bbr_do_segment_nounlock(m, th, so, tp,
+ 					 drop_hdrlen, tlen, iptos, 0, &tv);
+ 	if (retval == 0) {
+-		tcp_handle_wakeup(tp, so);
++		tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 		INP_WUNLOCK(tp->t_inpcb);
+ 	}
+ }
+diff --git a/sys/netinet/tcp_stacks/rack.c b/sys/netinet/tcp_stacks/rack.c
+index 104468bee..415a6953e 100755
+--- a/sys/netinet/tcp_stacks/rack.c
++++ b/sys/netinet/tcp_stacks/rack.c
+@@ -11190,6 +11190,7 @@ rack_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+     struct tcpcb *tp, int32_t drop_hdrlen, int32_t tlen, uint8_t iptos)
+ {
+ 	struct timeval tv;
++	int acc_pre_seg = so->so_rcv.sb_acc;
+ 
+ 	/* First lets see if we have old packets */
+ 	if (tp->t_in_pkt) {
+@@ -11207,7 +11208,7 @@ rack_do_segment(struct mbuf *m, struct tcphdr *th, struct socket *so,
+ 	}
+ 	if(rack_do_segment_nounlock(m, th, so, tp,
+ 				    drop_hdrlen, tlen, iptos, 0, &tv) == 0) {
+-		tcp_handle_wakeup(tp, so);
++		tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 		INP_WUNLOCK(tp->t_inpcb);
+ 	}
+ }
+diff --git a/sys/netinet/tcp_stacks/rack_bbr_common.c b/sys/netinet/tcp_stacks/rack_bbr_common.c
+index e73a3e60f..a4682dc9c 100755
+--- a/sys/netinet/tcp_stacks/rack_bbr_common.c
++++ b/sys/netinet/tcp_stacks/rack_bbr_common.c
+@@ -448,6 +448,7 @@ int
+ ctf_do_queued_segments(struct socket *so, struct tcpcb *tp, int have_pkt)
+ {
+ 	struct mbuf *m;
++	int acc_pre_seg = so->so_rcv.sb_acc;
+ 
+ 	/* First lets see if we have old packets */
+ 	if (tp->t_in_pkt) {
+@@ -458,7 +459,7 @@ ctf_do_queued_segments(struct socket *so, struct tcpcb *tp, int have_pkt)
+ 			/* We lost the tcpcb (maybe a RST came in)? */
+ 			return(1);
+ 		}
+-		tcp_handle_wakeup(tp, so);
++		tcp_handle_wakeup(tp, so, acc_pre_seg);
+ 	}
+ 	return (0);
+ }
+diff --git a/sys/netinet/tcp_var.h b/sys/netinet/tcp_var.h
+index 3b007fcfc..1e009de0c 100755
+--- a/sys/netinet/tcp_var.h
++++ b/sys/netinet/tcp_var.h
+@@ -961,7 +961,7 @@ void	hhook_run_tcp_est_in(struct tcpcb *tp,
+ int	 tcp_input(struct mbuf **, int *, int);
+ int	 tcp_autorcvbuf(struct mbuf *, struct tcphdr *, struct socket *,
+ 	    struct tcpcb *, int);
+-void	 tcp_handle_wakeup(struct tcpcb *, struct socket *);
++void	 tcp_handle_wakeup(struct tcpcb *, struct socket *, int acc_pre_seg);
+ void	 tcp_do_segment(struct mbuf *, struct tcphdr *,
+ 			struct socket *, struct tcpcb *, int, int, uint8_t);
+ 
