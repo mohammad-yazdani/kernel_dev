@@ -102,9 +102,8 @@ Patches are located in the `patch` folder.
 Recommended process to apply a patch:
 ```bash
 cd <kernel-source>
-git apply --stat <path to .patch file>
-git apply --check <path to .patch file>
-git am < <path to .patch file>
+patch -p1 --dry-run < <path to .patch file>
+patch -p1 < <path to .patch file>
 ```
 
 ## Userspace apps:
