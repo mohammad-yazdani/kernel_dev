@@ -63,7 +63,7 @@ sysctl -w net.ipv4.tcp_spurious_wake=0
 ### FreeBSD
 In this guide you'll spin up a VM to build a kernel and get debugging symbols for GDB, and then re-run the VM to debug with GDB.
 - First prepare a VM as build environment (use the scripts in `bsd_scripts` and `bsd_scripts/README.md` to make your life easier):
-
+- Please use the `--bsd` flag when running `debug.sh`.
 Run as user:
 ```
 qemu-system-x86_64 -smp 16 -m 32768 -hda VM60G.raw -boot c -cdrom FreeBSD-13.0-RELEASE-amd64-dvd1.iso -net user -net nic
