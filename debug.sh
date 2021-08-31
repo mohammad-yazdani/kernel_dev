@@ -57,8 +57,7 @@ if [[ ! -f buildroot/output/images/rootfs.ext4 ]]; then
 	# Compile buildroot (build rootfs image)
 	echo -n -e "Building rootfs image... \t\t\t"
 	cd buildroot
-	# yes N | 
-	CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
+	yes N | CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
 	echo "done! (log at /tmp/br_compile.log)"
 	cd ..
 else
