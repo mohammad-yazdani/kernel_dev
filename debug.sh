@@ -33,9 +33,9 @@ cp configs/br.config buildroot/.config
 mkdir -p buildroot/overlay/apps/
 if [[ $1 == "--bsd" ]]; then
 	shift
-	cp apps/bsd/* buildroot/overlay/apps/
+	cp apps/BSD/* buildroot/overlay/apps/
 else
-	cp apps/linux/* buildroot/overlay/apps/
+	cp apps/Linux/* buildroot/overlay/apps/
 fi
 
 
