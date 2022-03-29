@@ -3,6 +3,13 @@ CPU_CORES="4"
 MEMORY="4000M"
 app_cc="cc"
 DEVROOT="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+ARCH=$(arch)
+
+if [[ $ARCH == "x86_64" ]] || [[ $ARCH == "amd64" ]]; then
+	DISK_IMAGE=linux/arch/x86/boot/bzImage
+elif [[ $ARCH == "aarch64" ]] || [[ $ARCH == "arm64" ]]; then
+	DISK_IMAGE=linux/arch/arm64/boot/Image
+fi
 
 # Go to kernel_dev project root
 cd $DEVROOT
@@ -49,7 +56,7 @@ echo "done!"
 # Compile linux
 echo -n -e "Compiling kernel... \t\t\t\t"
 cd linux
-CC="ccache gcc" make -j$(nproc) # &> /tmp/linux_compile.log
+yes "" | CC="ccache gcc" make -j$(nproc) # &> /tmp/linux_compile.log
 echo "done! (log at /tmp/linux_compile.log)"
 cd ..
 
@@ -57,7 +64,7 @@ if [[ ! -f buildroot/output/images/rootfs.ext4 ]]; then
 	# Compile buildroot (build rootfs image)
 	echo -n -e "Building rootfs image... \t\t\t"
 	cd buildroot
-	yes N | CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
+	yes "" | CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
 	echo "done! (log at /tmp/br_compile.log)"
 	cd ..
 else
@@ -76,24 +83,35 @@ if [[ ! -f buildroot/overlay/etc/init.d/Stest_init ]]; then
 	# Recompile buildroot (build rootfs image)
 	echo -n -e "Re-building rootfs image... \t\t\t"
 	cd buildroot
-	CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
+	yes "" | CC="ccache gcc" make -j$(nproc) &> /tmp/br_compile.log
 	echo "done! (log at /tmp/br_recompile.log)"
 	cd ..
 fi
+
+# Save old configs and copy-back working configs so we don't answer questions every damn time
+cp configs/linux.config configs/linux.config.bak
+cp configs/br.config configs/br.config.bak
+cp linux/.config configs/linux.config
+cp buildroot/.config configs/br.config
+
+echo "Done building!"
 
 if [[ $1 == "--only-build" ]]; then
 	exit 0
 fi
 
+echo "qemu-system-x86_64 -kernel $DISK_IMAGE -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append \"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\" -serial stdio -display none"
+exit 0
+
 if [[ $1 == "--no-tmux" ]]; then
 	echo "Running QEMU..."
 	if [[ $2 == "--no-debug" ]]; then
-		qemu-system-x86_64 -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
+		qemu-system-x86_64 -kernel $DISK_IMAGE -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
 	else
-		qemu-system-x86_64 -s -S -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
+		qemu-system-x86_64 -s -S -kernel $DISK_IMAGE -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append "root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr" -serial stdio -display none
 	fi
 else
 	tmux \
-    	new-session  "qemu-system-x86_64 -s -S -kernel linux/arch/x86/boot/bzImage -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append \"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\" -serial stdio -display none" \; \
+    	new-session  "qemu-system-x86_64 -s -S -kernel $DISK_IMAGE -boot c -smp $CPU_CORES -m $MEMORY -drive file=buildroot/output/images/rootfs.ext4,format=raw -append \"root=/dev/sda rw console=ttyS0,115200 acpi=off nokaslr\" -serial stdio -display none" \; \
     	split-window "gdb -q linux/vmlinux -ex 'target remote :1234'" \;
 fi
